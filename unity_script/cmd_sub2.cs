@@ -132,8 +132,6 @@ public class cmd_sub2 : MonoBehaviour
     private void ApplyWheelMovement(float moveSpeed, float steerAngle)
     {
         // WheelCollider를 사용하여 바퀴에 회전력 적용
-        frontLeftWheelCollider.motorTorque = moveSpeed;
-        frontRightWheelCollider.motorTorque = moveSpeed;
         rearLeftWheelCollider.motorTorque = moveSpeed;
         rearRightWheelCollider.motorTorque = moveSpeed;
 
@@ -160,25 +158,70 @@ public class cmd_sub2 : MonoBehaviour
 
     void FixedUpdate()
     {   
-        float maxTorque = Mathf.Abs(lastSpeed) * 8f; 
-        currentSpeed = rb.linearVelocity.magnitude * Mathf.Sign(rb.linearVelocity.z);
-        Debug.Log($"Robot Input - Speed: {currentSpeed * 3.6f} km/h");
-        float speedError = Mathf.Abs(lastSpeed - currentSpeed);
-        float torqueFactor = 1.0f - Mathf.Log10(speedError + 1.0f); // 1 - log(n) 형태의 감속 곡선
-        Debug.Log($"torqueFactor: {torqueFactor} ");
-        // 토크가 0보다 작아지는 것을 방지
-        torqueFactor = Mathf.Clamp(torqueFactor, 0.1f, 1.0f);
+        // float maxTorque = Mathf.Abs(lastSpeed) * 8f; 
+        // currentSpeed = rb.linearVelocity.magnitude * Mathf.Sign(rb.linearVelocity.z);
+        // Debug.Log($"Robot Input - Speed: {currentSpeed * 3.6f} km/h");
+        // float speedError = Mathf.Abs(lastSpeed - currentSpeed);
+        // float torqueFactor = 1.0f - Mathf.Log10(speedError + 1.0f); // 1 - log(n) 형태의 감속 곡선
+        // Debug.Log($"torqueFactor: {torqueFactor} ");
+        // // 토크가 0보다 작아지는 것을 방지
+        // torqueFactor = Mathf.Clamp(torqueFactor, 0.1f, 1.0f);
         
-        float appliedTorque =Mathf.Clamp(Mathf.Abs(lastSpeed), 0.0f, 1.0f) * maxTorque * torqueFactor * Mathf.Sign(lastSpeed - currentSpeed);
+        // float appliedTorque =Mathf.Clamp(Mathf.Abs(lastSpeed), 0.0f, 1.0f) * maxTorque * torqueFactor * Mathf.Sign(lastSpeed - currentSpeed);
+        // 최대 회전 속도 및 토크 값
+        const float MAX_RPM = 3000f;
+        const float PEAK_RPM = 5000f;
+        const float MAX_TORQUE = 9.55f;
+        const float PEAK_TORQUE = 40f;
 
 
-        
+        // 차량의 전방 벡터
+        Vector3 forward = transform.forward;
+        // 현재 속도 벡터
+        Vector3 velocity = rb.velocity;
+
+        // 전방 벡터와 속도 벡터 간의 각도 계산
+        float angle = Vector3.Angle(forward, velocity);
+
+        // 속도의 부호 결정 (전방 벡터와 속도 벡터가 같은 방향이면 양수, 반대 방향이면 음수)
+        float sign = (Vector3.Dot(forward, velocity) >= 0) ? 1.0f : -1.0f;
+
+        // 현재 속도 계산
+        currentSpeed = velocity.magnitude * sign;
+
+        // 속도 오차 계산
+        float speedError = lastSpeed - currentSpeed;
+
+        // PID 제어기 변수 (적절한 값으로 조정 필요)
+        float Kp = 2.5f; // 비례 계수 증가
+        float Ki = 0.1f; // 적분 계수 증가
+        float Kd = 0.01f; // 미분 계수 증가
+
+        // PID 제어기 계산
+        float proportional = Kp * speedError;
+        float integral = Ki * speedError * Time.deltaTime;
+        float derivative = Kd * (speedError - previousSpeedError) / Time.deltaTime;
+        previousSpeedError = speedError;
+
+        float pidOutput = proportional + integral + derivative;
+
+        // 최대 토크 계산
+        float maxTorque = Mathf.Lerp(MAX_TORQUE, PEAK_TORQUE, Mathf.Abs(lastSpeed) / PEAK_RPM) * 20;
+
+        // 적용할 토크 계산
+        float appliedTorque = Mathf.Clamp(pidOutput * 20, -maxTorque, maxTorque);
+
+        // 목표 속도가 0일 때 토크를 0으로 설정
+        if (Mathf.Approximately(lastSpeed, 0f))
+        {
+            appliedTorque = 0f;
+        }
         // 이전 메시지의 값을 반영하여 로봇을 움직이도록 처리
         ApplyWheelMovement(appliedTorque, lastSteerAngle);
         UpdateVisualWheels();
         
     }
-
+    private float previousSpeedError = 0f;
 
     private void UpdateVisualWheels()
     {
